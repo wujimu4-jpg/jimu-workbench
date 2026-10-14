@@ -1,0 +1,11 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');const E=require('../dist/evidence-core.js'),C=require('../dist/core.js');
+test('recognizes precise labeled counts and percentages',()=>{const rows=E.parse('播放量 36,000\n完播率 42.5%\n点赞数 1580\n评论数 142\n收藏数 310\n分享数 186\n新增关注 145');assert.deepEqual(rows.map(x=>x.value),[36000,42.5,1580,142,310,186,145]);});
+test('supports label value pairs across two lines',()=>{const rows=E.parse('播放量\n36000\n完播率\n42.5%');assert.equal(rows[0].value,36000);assert.equal(rows[1].value,42.5);});
+test('unit abbreviations are explicitly approximate',()=>{const r=E.parse('播放量：3.6万');assert.equal(r[0].value,36000);assert.equal(r[0].approx,true);assert.equal(E.numeric('2.3k').value,2300);});
+test('missing fields stay missing and do not turn into zeros',()=>{const rows=E.parse('点赞数 0');assert.equal(rows.find(r=>r.key==='likes').value,0);assert.equal(rows[0].value,null);});
+test('ambiguous conflicting values remain unfilled',()=>{const r=E.parse('播放量 36000\n播放量 12000');assert.equal(r[0].value,null);assert.ok(r[0].conflict);});
+test('does not equate impressions, unique viewers or net growth with existing fields',()=>{const rows=E.parse('曝光量 100000\n观看人数 12000\n净增粉丝 40');assert.ok(rows.every(r=>r.value===null));});
+test('rejects impossible percentages, negative counts and guessed ratios',()=>{assert.equal(E.numeric('101%',true),null);assert.equal(E.numeric('0.45',true),null);assert.equal(E.numeric('-20'),null);assert.equal(E.numeric('1.5'),null);assert.equal(E.numeric('1 2 3'),null);});
+test('does not guess mappings across multiple labels on one line',()=>{assert.ok(E.parse('播放量 点赞数 36000 1580').every(r=>r.value===null));});
+test('legacy state remains valid; malformed attachments rejected',()=>{const s=C.seed();assert.doesNotThrow(()=>C.validateImport(s));s.projects[0].metricScreenshots=[{id:'bad',name:'file.svg',type:'image/svg+xml'}];assert.throws(()=>C.validateImport(s));});
+test('draft data validates independently of confirmed metrics',()=>{const s=C.seed();s.projects[0].metricEntryDraft={plays:'36000',completion:'42.5',source:'后台截图'};assert.doesNotThrow(()=>C.validateImport(s));s.projects[0].metricEntryDraft={unknown:'bad'};assert.throws(()=>C.validateImport(s));});

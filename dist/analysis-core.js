@@ -1,0 +1,26 @@
+(function(root){
+'use strict';
+const fields=[
+['opening','开头吸引力','前 3–5 秒，观众先看到什么？是否出现人物、问题或结果？','让关键动作或问题先出现，再补背景；只调整开头，保留其余结构。','同窗口前 5 秒留存与完播率；未提供留存时先补录'],
+['story','叙事与信息','人物想做什么？过程、变化与结果是否连贯？','把过程围绕一个清晰问题组织，减少重复背景，用真实结果收束。','同窗口完播率；结合观众对故事理解的评论'],
+['voice','口播与表达','口播是否自然、清晰？哪些表达太书面或重复？','将重复解释改成一句自然口语，让动作承载信息；保留人物自己的表达。','平均观看时长与对应段落的反馈'],
+['visual','画面与声音','画面是否支持叙事？字幕、构图和人声是否易读易听？','核对关键画面、字幕与人声，优先修复影响理解的一个问题。','观察该段留存（平台可提供时）及可读性反馈'],
+['pacing','剪辑节奏','哪里停留太久或切换过快？是否保留了必要的真实反应？','只缩短重复段落，保留真实反应的呼吸感；避免全片无差别加速。','同窗口平均观看时长、完播率与跳出指标'],
+['ending','结尾与价值','结尾是否兑现开场的期待？观众最后带走了什么？','让结尾回到开场的问题，用具体结果完成表达，减少重复总结。','完播率、收藏率以及结尾相关评论'],
+['brand','品牌融合','如有商单，露出是否自然？必带信息和内容边界是否核对？','让品牌信息依托真实使用场景，逐项核对 Brief 与商业标识。','品牌要求完成情况；转化需另有可靠数据，不由播放量推断']
+].map(([key,label,prompt,action,verify])=>({key,label,prompt,action,verify}));
+function blank(){return {evidenceSource:'人工观察',transcript:'',comments:'',notes:Object.fromEntries(fields.map(f=>[f.key,{judgment:'unknown',text:''}])),extra:{retention5:null,bounce2:null,avgWatch:null,source:''},material:null};}
+function normalize(raw){const a=blank();if(!raw)return a;a.evidenceSource=raw.evidenceSource||'人工观察';a.transcript=raw.transcript||'';a.comments=raw.comments||'';a.material=raw.material||null;for(const f of fields)a.notes[f.key]={judgment:raw.notes?.[f.key]?.judgment||'unknown',text:raw.notes?.[f.key]?.text||''};Object.assign(a.extra,raw.extra||{});return a;}
+function assert(ok,msg){if(!ok)throw Error(msg);}
+function validate(raw){assert(raw&&typeof raw==='object','视频分析记录格式不正确。');const a=normalize(raw);assert(['人工观察','示例观察'].includes(a.evidenceSource),'内容观察来源不正确。');for(const k of ['transcript','comments'])assert(typeof a[k]==='string'&&a[k].length<=40000,'分析文本过长或格式不正确。');for(const f of fields){const n=a.notes[f.key];assert(['unknown','strength','improve'].includes(n.judgment)&&typeof n.text==='string'&&n.text.length<=6000,'内容观察格式不正确。');assert(n.judgment==='unknown'||n.text.trim(),'请为已判断的维度填写具体观察依据。');}for(const k of ['retention5','bounce2','avgWatch']){const n=a.extra[k];assert(n===null||(Number.isFinite(n)&&n>=0&&(k==='avgWatch'||n<=100)),'留存与跳出率应在 0–100%，观看时长应为非负数。');}assert(typeof a.extra.source==='string','补充指标来源格式不正确。');if(['retention5','bounce2','avgWatch'].some(k=>a.extra[k]!==null))assert(a.extra.source.trim(),'请注明补充指标的数据来源与统计窗口。');if(a.material){assert(typeof a.material.name==='string'&&Number.isFinite(a.material.duration)&&a.material.duration>0&&Number.isFinite(a.material.width)&&Number.isFinite(a.material.height),'视频文件信息不正确。');if(a.extra.avgWatch!==null)assert(a.extra.avgWatch<=a.material.duration,'平均观看时长不能大于成片时长。');}return a;}
+function signature(p){return JSON.stringify({observations:normalize(p.videoAnalysis),metrics:p.stage>=6?p.metrics:null,platform:p.platform});}
+function isCurrent(p){return !!p.analysisReport&&p.analysisReport.signature===signature(p);}
+function generate(p,projects,core){const a=validate(p.videoAnalysis);const present=fields.filter(f=>a.notes[f.key].text.trim());assert(present.length||a.transcript.trim()||a.comments.trim(),'先填写至少一条内容观察、逐字稿或评论，再生成分析。');const data=p.stage>=6&&p.metrics?core.review(p,projects):null;
+const findings=present.map(f=>{const n=a.notes[f.key];return {key:f.key,title:f.label,judgment:n.judgment,evidence:n.text.trim(),interpretation:n.judgment==='improve'?'编导标记为待调整；这是一项内容假设，尚不能归因为数据表现。':n.judgment==='strength'?'编导标记为可保留；是否稳定有效，需要相近内容与同口径数据验证。':'已有观察，但尚未作出判断。',action:f.action,verify:f.verify};});
+const issues=findings.filter(f=>f.judgment==='improve'),strengths=findings.filter(f=>f.judgment==='strength');
+const suggestions=issues.slice(0,3).map((f,i)=>({id:'analysis-'+f.key,title:f.title+'：优先验证一处调整',text:f.action+' 验证：'+f.verify+'。',basis:`${a.evidenceSource}：${f.evidence}${data?`；本条完播率 ${p.metrics.completion}%，尚不能证明因果。`:'；数据尚未齐备，先作为待验证假设。'}`}));
+const fallbacks=data?data.suggestions:[{title:'先补齐同口径数据',text:'发布满选定统计窗口后录入播放、完播与互动数据，再验证内容假设。',basis:'尚未登记可比较的完整视频表现数据。'},{title:'保留一项内容变量',text:'下一条只调整一个明确问题，保留人物、题材与大致时长。',basis:'当前观察不足以支持同时更改多个内容因素。'},{title:'补充观众原始反馈',text:'保存有代表性的评论原文与来源，并区分个人理解和观众实际表达。',basis:'不能仅根据评论数量推断观众动机。'}];for(const f of fallbacks){if(suggestions.length>=3)break;suggestions.push({...f,id:'analysis-fallback-'+suggestions.length});}
+return {generatedAt:new Date().toISOString(),signature:signature(p),mode:'规则模拟 · 基于填写的观察与数据，未自动识别画面或转写音频',evidenceSource:a.evidenceSource,findings,missing:fields.filter(f=>!a.notes[f.key].text.trim()).map(f=>f.label),strengths:strengths.map(f=>f.title),data:data?{summary:data.summary,sampleIds:data.sampleIds,base:data.base,interactionRate:data.interactionRate,snapshot:data.snapshot}:null,suggestions,transcriptChars:a.transcript.replace(/\s/g,'').length,extra:{...a.extra},material:a.material?{...a.material}:null};}
+function combinedReview(p,projects,core){assert(p.stage===6,'请先完成发布数据登记；已确认的最终方向保持原有记录。');assert(isCurrent(p),'内容观察或数据已更新，请重新生成视频分析。');const r=core.review(p,projects);r.suggestions=p.analysisReport.suggestions.map(x=>({...x}));r.contentAnalysis={generatedAt:p.analysisReport.generatedAt,evidenceSource:p.analysisReport.evidenceSource,findings:p.analysisReport.findings.map(f=>({...f})),mode:p.analysisReport.mode};return r;}
+const api={fields,blank,normalize,validate,signature,isCurrent,generate,combinedReview};root.JimuAnalysis=api;if(typeof module!=='undefined')module.exports=api;
+})(globalThis);

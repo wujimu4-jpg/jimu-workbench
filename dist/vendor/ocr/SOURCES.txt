@@ -1,0 +1,4 @@
+Tesseract.js 6.0.1 (Apache-2.0): https://github.com/naptha/tesseract.js
+Tesseract.js-core 6.1.2 (Apache-2.0): https://github.com/naptha/tesseract.js-core
+English and simplified Chinese LSTM models: @tesseract.js-data/eng@1.0.0 and @tesseract.js-data/chi_sim@1.0.0 (4.0.0_best_int), https://github.com/naptha/tessdata (Apache-2.0).
+Files are self-hosted; user screenshots are processed in the browser.

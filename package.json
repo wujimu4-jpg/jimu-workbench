@@ -1,0 +1,1 @@
+{"name": "jimu-workbench", "version": "1.0.0", "private": true, "description": "积木工作台 · 可运行的中文编导工作台原型", "scripts": {"start": "node server.cjs", "test": "node --test tests/core.test.cjs tests/analysis.test.cjs tests/evidence.test.cjs"}}
